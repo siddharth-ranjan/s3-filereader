@@ -31,31 +31,59 @@ public class LoaderRedisService {
             return fetchFromCache(cacheKey, requestedCount);
         }
 
-        boolean isLocked = Boolean.TRUE.equals(
-                redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", Duration.ofSeconds(10))
-        );
+        int maxRetries = 10;
+        int retryCount = 0;
 
-        if (isLocked) {
-            try {
-                long doubleCheckSize = redisTemplate.opsForList().size(cacheKey) != null ?
-                        redisTemplate.opsForList().size(cacheKey) : 0;
+        while (retryCount < maxRetries) {
+            boolean isLocked = Boolean.TRUE.equals(
+                    redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", Duration.ofSeconds(10))
+            );
 
-                if (doubleCheckSize < requestedCount) {
-                    String currentCounterStr = redisTemplate.opsForValue().get(counterKey);
-                    int startRow = (currentCounterStr == null) ? 0 : Integer.parseInt(currentCounterStr);
+            if (isLocked) {
+                try {
+                    long doubleCheckSize = redisTemplate.opsForList().size(cacheKey) != null ?
+                            redisTemplate.opsForList().size(cacheKey) : 0;
 
-                    List<String> newRecords = s3CsvReaderService.readRowsFromS3(filename, startRow, CHUNK_SIZE);
+                    while (doubleCheckSize < requestedCount) {
+                        String currentCounterStr = redisTemplate.opsForValue().get(counterKey);
+                        int startRow = (currentCounterStr == null) ? 1 : Integer.parseInt(currentCounterStr);
 
-                    if (!newRecords.isEmpty()) {
-                        redisTemplate.opsForList().rightPushAll(cacheKey, newRecords);
-                        redisTemplate.opsForValue().set(counterKey, String.valueOf(startRow + newRecords.size()));
+                        List<String> newRecords = s3CsvReaderService.readRowsFromS3(filename, startRow, CHUNK_SIZE);
+
+                        if (!newRecords.isEmpty()) {
+                            redisTemplate.opsForList().rightPushAll(cacheKey, newRecords);
+                            redisTemplate.opsForValue().set(counterKey, String.valueOf(startRow + newRecords.size()));
+                        }
+
+                        if (newRecords.size() < CHUNK_SIZE) {
+                            redisTemplate.opsForValue().set(counterKey, "1");
+                            break;
+                        }
+
+                        doubleCheckSize = redisTemplate.opsForList().size(cacheKey) != null ?
+                                redisTemplate.opsForList().size(cacheKey) : 0;
                     }
+                } finally {
+                    redisTemplate.delete(lockKey);
                 }
-            } finally {
-                redisTemplate.delete(lockKey);
+                break;
+            } else {
+                // Wait and retry
+                System.out.println("Waiting! Try: " + retryCount);
+                retryCount++;
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted while waiting for lock", e);
+                }
+
+                long refreshedSize = redisTemplate.opsForList().size(cacheKey) != null ?
+                        redisTemplate.opsForList().size(cacheKey) : 0;
+                if (refreshedSize >= requestedCount) {
+                    break;
+                }
             }
-        } else {
-            throw new RuntimeException("Fetch in progress by another instance. Please retry shortly.");
         }
 
         return fetchFromCache(cacheKey, requestedCount);

@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -28,9 +27,6 @@ class S3Config {
     @Value("${aws.secretAccessKey}")
     private String secretAccessKey;
 
-    @Value("${aws.s3.folder}")
-    private String folder;
-
     @Bean
     public S3Client s3Client() {
         return S3Client.builder()
@@ -48,7 +44,8 @@ public class S3CsvReaderService {
     @Value("${aws.s3.bucket}")
     private String bucketName;
 
-
+    @Value("${aws.s3.folder}")
+    private String folder;
 
     public S3CsvReaderService(S3Client s3Client) {
         this.s3Client = s3Client;
@@ -56,6 +53,7 @@ public class S3CsvReaderService {
 
     public List<String> readRowsFromS3(String filename, int startRow, int limit) {
         List<String> records = new ArrayList<>();
+        filename = folder + "/" +    filename;
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(bucketName)
                 .key(filename)
@@ -64,14 +62,12 @@ public class S3CsvReaderService {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(s3Client.getObject(request), StandardCharsets.UTF_8))) {
 
-            // Skip rows already processed
             for (int i = 0; i < startRow; i++) {
                 if (reader.readLine() == null) {
                     return records; // Reached EOF during skip
                 }
             }
 
-            // Read the next chunk
             String line;
             while (records.size() < limit && (line = reader.readLine()) != null) {
                 records.add(line);

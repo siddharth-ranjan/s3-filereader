@@ -1,7 +1,6 @@
 package com.filereader.loader.controller;
 
 import com.filereader.loader.redis.LoaderRedisService;
-import com.filereader.loader.s3Client.S3CsvReaderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,11 +11,9 @@ import java.util.List;
 public class LoaderController {
 
     private final LoaderRedisService loaderRedisService;
-    private final S3CsvReaderService s3CsvReaderService;
 
-    public LoaderController(LoaderRedisService loaderRedisService,  S3CsvReaderService s3CsvReaderService) {
+    public LoaderController(LoaderRedisService loaderRedisService) {
         this.loaderRedisService = loaderRedisService;
-        this.s3CsvReaderService = s3CsvReaderService;
     }
 
     @GetMapping()
@@ -24,8 +21,6 @@ public class LoaderController {
             @RequestParam String filename,
             @RequestParam(defaultValue = "1") int count) {
 
-//        System.out.println(s3CsvReaderService.readRowsFromS3(filename, 0, count));
-//        return "Success";
         try {
             List<String> records = loaderRedisService.getNextRecords(filename, count);
             if (records.isEmpty()) {
@@ -33,7 +28,7 @@ public class LoaderController {
             }
             return ResponseEntity.ok(records);
         } catch (RuntimeException e) {
-            return ResponseEntity.status(429).body(e.getMessage()); // 429 Too Many Requests or 503
+            return ResponseEntity.status(429).body(e.getMessage());
         }
 
     }
