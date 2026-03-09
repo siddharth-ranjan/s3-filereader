@@ -1,7 +1,10 @@
 package com.gpn.FileReaderApplication.service;
 
 import com.gpn.FileReaderApplication.client.LoaderClient;
+import com.gpn.FileReaderApplication.dto.CardRecord;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Service
 public class FileService {
@@ -11,11 +14,11 @@ public class FileService {
         this.loaderClient = loaderClient;
     }
 
-    public String getNext(String filename, String requestId) {
+    public CardRecord getNext(String filename, String requestId) {
         return loaderClient.getNext(filename, requestId);
     }
 
-    public String getCustom(String filename, int count, String requestId) {
+    public List<CardRecord> getCustom(String filename, int count, String requestId) {
         return loaderClient.getCustom(filename, count, requestId);
     }
 }
