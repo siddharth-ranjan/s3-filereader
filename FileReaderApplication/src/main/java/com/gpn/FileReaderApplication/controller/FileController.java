@@ -1,10 +1,9 @@
 package com.gpn.FileReaderApplication.controller;
 
+import com.gpn.FileReaderApplication.dto.FileRequest;
 import com.gpn.FileReaderApplication.service.FileService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/records")
@@ -15,13 +14,17 @@ public class FileController {
         this.fileService = service;
     }
 
-    @GetMapping
-    public String getNext(@RequestParam String filename) {
-        return fileService.getNext(filename);
+    @PostMapping("/next")
+    public String getNext(HttpServletRequest request, @RequestBody FileRequest body) {
+        String requestId = (String) request.getAttribute("X-Request-Id");
+
+        return fileService.getNext(body.getFilename(), requestId);
     }
 
-    @GetMapping("/custom")
-    public String getCustom(@RequestParam String filename, @RequestParam int count) {
-        return fileService.getCustom(filename, count);
+    @PostMapping("/custom")
+    public String getCustom(HttpServletRequest request, @RequestBody FileRequest body) {
+        String requestId = (String) request.getAttribute("X-Request-Id");
+
+        return fileService.getCustom(body.getFilename(), body.getCount(), requestId);
     }
 }

@@ -11,11 +11,11 @@ public class FileService {
         this.loaderClient = loaderClient;
     }
 
-    public String getNext(String filename) {
-        return loaderClient.getNext(filename);
+    public String getNext(String filename, String requestId) {
+        return loaderClient.getNext(filename, requestId);
     }
 
-    public String getCustom(String filename, int count) {
-        return loaderClient.getCustom(filename, count);
+    public String getCustom(String filename, int count, String requestId) {
+        return loaderClient.getCustom(filename, count, requestId);
     }
 }

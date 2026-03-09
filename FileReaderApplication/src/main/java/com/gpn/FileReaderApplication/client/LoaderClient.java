@@ -8,27 +8,29 @@ public class LoaderClient {
     private final WebClient webClient;
 
     public LoaderClient(WebClient.Builder builder) {
-        this.webClient = builder.baseUrl("http://loader-service:8081").build();
+        this.webClient = builder.baseUrl("http://54.88.192.54:8080").build();
     }
 
-    public String getNext(String filename) {
+    public String getNext(String filename, String requestId) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
-                        .path("/next")
+                        .path("/getNext")
                         .queryParam("filename", filename)
                         .build())
+                .header("X-Request-Id", requestId)
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
     }
 
-    public String getCustom(String filename, int count) {
+    public String getCustom(String filename, int count, String requestId) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
-                        .path("/custom")
+                        .path("/getNext")
                         .queryParam("filename", filename)
                         .queryParam("count", count)
                         .build())
+                .header("X-Request-Id", requestId)
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
