@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -15,12 +16,14 @@ public class LoaderClient {
     private final WebClient webClient;
 
     public LoaderClient(WebClient.Builder builder) {
+        System.out.println("calling");
         this.webClient = builder.baseUrl("http://54.88.192.54:8080").build();
     }
 
     public CardRecord getNext(String filename, String requestId) {
 
         try {
+           // System.out.println("calling below");
 
             List<String> record = webClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -41,6 +44,8 @@ public class LoaderClient {
             }
 
             String[] parts = record.getFirst().split(",");
+            System.out.println("length");
+            System.out.println(parts.length);
 
             if (parts.length != 3) {
                 throw new RuntimeException(
