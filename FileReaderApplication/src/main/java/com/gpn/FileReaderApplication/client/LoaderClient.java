@@ -8,7 +8,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Component
 public class LoaderClient {
@@ -16,13 +15,14 @@ public class LoaderClient {
 
     public LoaderClient(WebClient.Builder builder) {
         this.webClient = builder.baseUrl("http://54.88.192.54:8080").build();
+
     }
 
     public CardRecord getNext(String filename, String requestId) {
 
         try {
 
-            List<String> record = webClient.get()
+            List<CardRecord> record = webClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/getNext")
                             .queryParam("filename", filename)
@@ -33,21 +33,13 @@ public class LoaderClient {
                             response.bodyToMono(String.class)
                                     .map(body -> new RuntimeException(
                                             "Loader service error: " + body)))
-                    .bodyToMono(new ParameterizedTypeReference<List<String>>() {})
+                    .bodyToMono(new ParameterizedTypeReference<List<CardRecord>>() {})
                     .block();
 
             if (record == null || record.isEmpty()) {
                 throw new RuntimeException("Empty response from loader service");
             }
-
-            String[] parts = record.getFirst().split(",");
-
-            if (parts.length != 3) {
-                throw new RuntimeException(
-                        "Invalid record format received from loader service: " + record);
-            }
-
-            return new CardRecord(parts[0].trim(), parts[1].trim(), parts[2].trim());
+            return record.getFirst();
 
         } catch (WebClientResponseException ex) {
             throw new RuntimeException(
@@ -59,7 +51,7 @@ public class LoaderClient {
 
         try {
 
-            List<String> records = webClient.get()
+            List<CardRecord> records = webClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/getNext")
                             .queryParam("filename", filename)
@@ -71,35 +63,13 @@ public class LoaderClient {
                             response.bodyToMono(String.class)
                                     .map(body -> new RuntimeException(
                                             "Loader service error: " + body)))
-                    .bodyToMono(new ParameterizedTypeReference<List<String>>() {})
+                    .bodyToMono(new ParameterizedTypeReference<List<CardRecord>>() {})
                     .block();
 
             if (records == null || records.isEmpty()) {
                 throw new RuntimeException("Empty response received from loader service");
             }
-
-            return records.stream()
-                    .map(record -> {
-
-                        if (record == null || record.isBlank()) {
-                            throw new RuntimeException("Invalid empty record received");
-                        }
-
-                        String[] parts = record.split(",");
-
-                        if (parts.length != 3) {
-                            throw new RuntimeException(
-                                    "Invalid record format received from loader service: " + record);
-                        }
-
-                        return new CardRecord(
-                                parts[0].trim(),
-                                parts[1].trim(),
-                                parts[2].trim()
-                        );
-
-                    })
-                    .toList();
+            return records;
 
         } catch (WebClientResponseException ex) {
             throw new RuntimeException(

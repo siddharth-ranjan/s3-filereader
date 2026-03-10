@@ -1,5 +1,6 @@
 package com.filereader.loader.controller;
 
+import com.filereader.loader.dto.CardRecord;
 import com.filereader.loader.redis.LoaderRedisService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +23,7 @@ public class LoaderController {
             @RequestParam(defaultValue = "1") int count) {
 
         try {
-            List<String> records = loaderRedisService.getNextRecords(filename, count);
+            List<CardRecord> records = loaderRedisService.getNextRecords(filename, count);
             if (records.isEmpty()) {
                 return ResponseEntity.ok().body("EOF: No more records found.");
             }

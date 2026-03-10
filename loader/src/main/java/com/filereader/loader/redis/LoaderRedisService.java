@@ -1,10 +1,12 @@
 package com.filereader.loader.redis;
 
+import com.filereader.loader.dto.CardRecord;
 import com.filereader.loader.s3Client.S3CsvReaderService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -19,7 +21,7 @@ public class LoaderRedisService {
         this.s3CsvReaderService = s3CsvReaderService;
     }
 
-    public List<String> getNextRecords(String filename, int requestedCount) {
+    public List<CardRecord> getNextRecords(String filename, int requestedCount) {
         String cacheKey = "cache:" + filename;
         String lockKey = "lock:s3:" + filename;
         String counterKey = "counter:" + filename;
@@ -89,11 +91,25 @@ public class LoaderRedisService {
         return fetchFromCache(cacheKey, requestedCount);
     }
 
-    private List<String> fetchFromCache(String cacheKey, int count) {
+    private List<CardRecord> fetchFromCache(String cacheKey, int count) {
         List<String> records = redisTemplate.opsForList().range(cacheKey, 0, count - 1);
+        List<CardRecord> dtoList=new ArrayList<>();
+
         if (records != null && !records.isEmpty()) {
-            redisTemplate.opsForList().trim(cacheKey, records.size(), -1);
+            for(String r:records){
+                dtoList.add(mapToDto(r));
+            }
+
         }
-        return records;
+        return dtoList;
+    }
+    private CardRecord mapToDto(String record){
+        String[] parts = record.split(",");
+
+        return new CardRecord(
+                parts[0].trim(),
+                parts[1].trim(),
+                parts[2].trim()
+        );
     }
 }
