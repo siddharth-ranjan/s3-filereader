@@ -1,46 +1,53 @@
 package com.filereader.loader.redis;
 
+import com.filereader.loader.model.AccountRecord;
 import com.filereader.loader.s3Client.S3CsvReaderService;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class LoaderRedisService {
 
     private final StringRedisTemplate redisTemplate;
     private final S3CsvReaderService s3CsvReaderService;
+    private final RedissonClient redissonClient;
     private static final int CHUNK_SIZE = 20;
 
-    public LoaderRedisService(StringRedisTemplate redisTemplate, S3CsvReaderService s3CsvReaderService) {
+    public LoaderRedisService(StringRedisTemplate redisTemplate,
+                              S3CsvReaderService s3CsvReaderService,
+                              RedissonClient redissonClient) {
         this.redisTemplate = redisTemplate;
         this.s3CsvReaderService = s3CsvReaderService;
+        this.redissonClient = redissonClient;
     }
 
-    public List<String> getNextRecords(String filename, int requestedCount) {
+    public List<AccountRecord> getNextRecords(String filename, int requestedCount) {
         String cacheKey = "cache:" + filename;
-        String lockKey = "lock:s3:" + filename;
         String counterKey = "counter:" + filename;
+        String lockKey = "lock:s3:" + filename;
 
         long currentCacheSize = redisTemplate.opsForList().size(cacheKey) != null ?
                 redisTemplate.opsForList().size(cacheKey) : 0;
 
         if (currentCacheSize >= requestedCount) {
-            return fetchFromCache(cacheKey, requestedCount);
+            return parseRecords(fetchFromCache(cacheKey, requestedCount));
         }
 
-        int maxRetries = 10;
-        int retryCount = 0;
+        RLock lock = redissonClient.getLock(lockKey);
 
-        while (retryCount < maxRetries) {
-            boolean isLocked = Boolean.TRUE.equals(
-                    redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", Duration.ofSeconds(10))
-            );
+        try {
+            boolean isLocked = lock.tryLock(5, -1, TimeUnit.SECONDS);
 
             if (isLocked) {
                 try {
+                    boolean eofResetDone = false;
+
                     long doubleCheckSize = redisTemplate.opsForList().size(cacheKey) != null ?
                             redisTemplate.opsForList().size(cacheKey) : 0;
 
@@ -56,37 +63,38 @@ public class LoaderRedisService {
                         }
 
                         if (newRecords.size() < CHUNK_SIZE) {
+                            // EOF reached
+                            if (!eofResetDone && newRecords.isEmpty()) {
+                                // Counter was already at EOF, nothing cached yet — reset and retry from start
+                                redisTemplate.opsForValue().set(counterKey, "1");
+                                eofResetDone = true;
+                                continue;
+                            }
+                            // EOF with some records fetched — reset counter, return what we have
                             redisTemplate.opsForValue().set(counterKey, "1");
-                            break;
+                            long available = redisTemplate.opsForList().size(cacheKey) != null ?
+                                    redisTemplate.opsForList().size(cacheKey) : 0;
+                            int returnCount = (int) Math.min(available, requestedCount);
+                            return parseRecords(fetchFromCache(cacheKey, returnCount));
                         }
 
                         doubleCheckSize = redisTemplate.opsForList().size(cacheKey) != null ?
                                 redisTemplate.opsForList().size(cacheKey) : 0;
                     }
                 } finally {
-                    redisTemplate.delete(lockKey);
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
-                break;
             } else {
-                // Wait and retry
-                System.out.println("Waiting! Try: " + retryCount);
-                retryCount++;
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Interrupted while waiting for lock", e);
-                }
-
-                long refreshedSize = redisTemplate.opsForList().size(cacheKey) != null ?
-                        redisTemplate.opsForList().size(cacheKey) : 0;
-                if (refreshedSize >= requestedCount) {
-                    break;
-                }
+                throw new RuntimeException("Could not acquire lock after 5 seconds. Please retry shortly.");
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for lock", e);
         }
 
-        return fetchFromCache(cacheKey, requestedCount);
+        return parseRecords(fetchFromCache(cacheKey, requestedCount));
     }
 
     private List<String> fetchFromCache(String cacheKey, int count) {
@@ -95,5 +103,18 @@ public class LoaderRedisService {
             redisTemplate.opsForList().trim(cacheKey, records.size(), -1);
         }
         return records;
+    }
+
+    private List<AccountRecord> parseRecords(List<String> rawRecords) {
+        List<AccountRecord> result = new ArrayList<>();
+        if (rawRecords == null) return result;
+        for (String line : rawRecords) {
+            String[] parts = line.split(",", 3);
+            String accountNumber = parts.length > 0 ? parts[0].trim() : "";
+            String accountType = parts.length > 1 ? parts[1].trim() : "";
+            String status = parts.length > 2 ? parts[2].trim() : "";
+            result.add(new AccountRecord(accountNumber, accountType, status));
+        }
+        return result;
     }
 }
