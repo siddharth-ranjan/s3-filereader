@@ -46,7 +46,6 @@ public class LoaderRedisService {
 
             if (isLocked) {
                 try {
-                    boolean eofResetDone = false;
 
                     long doubleCheckSize = redisTemplate.opsForList().size(cacheKey) != null ?
                             redisTemplate.opsForList().size(cacheKey) : 0;
@@ -55,19 +54,22 @@ public class LoaderRedisService {
                         String currentCounterStr = redisTemplate.opsForValue().get(counterKey);
                         int startRow = (currentCounterStr == null) ? 1 : Integer.parseInt(currentCounterStr);
 
-                        List<String> newRecords = s3CsvReaderService.readRowsFromS3(filename, startRow, CHUNK_SIZE);
+                        long remaining = requestedCount - doubleCheckSize;
+                        int fetchSize = ((int) ((remaining + CHUNK_SIZE - 1) / CHUNK_SIZE)) * CHUNK_SIZE;
+
+                        List<String> newRecords = s3CsvReaderService.readRowsFromS3(filename, startRow, fetchSize);
 
                         if (!newRecords.isEmpty()) {
                             redisTemplate.opsForList().rightPushAll(cacheKey, newRecords);
                             redisTemplate.opsForValue().set(counterKey, String.valueOf(startRow + newRecords.size()));
                         }
 
-                        if (newRecords.size() < CHUNK_SIZE) {
+                        if (newRecords.size() < fetchSize) {
                             // EOF reached
-                            if (!eofResetDone && newRecords.isEmpty()) {
+                                if (newRecords.isEmpty() && redisTemplate.opsForList().size(cacheKey) == 0) {
                                 // Counter was already at EOF, nothing cached yet — reset and retry from start
                                 redisTemplate.opsForValue().set(counterKey, "1");
-                                eofResetDone = true;
+//                                eofResetDone = true;
                                 continue;
                             }
                             // EOF with some records fetched — reset counter, return what we have
